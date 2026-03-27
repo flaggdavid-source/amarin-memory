@@ -14,9 +14,9 @@ I'm Dave. I'm building an AI companion system called Amarin — a full-stack pro
 
 This isn't a weekend project or a proof of concept. It's battle-tested infrastructure that runs 24/7, handling thousands of memories across multiple AI agents with different identities and voices.
 
-If you find it useful, consider [supporting the project on Ko-fi](https://ko-fi.com/davidflagg). I'm an independent developer building this on disability income. Every dollar helps keep the lights on.
+If you find it useful, consider [supporting the project on Ko-fi](https://ko-fi.com/davidflagg86433). I'm an independent developer building this on disability income. Every dollar helps keep the lights on.
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/davidflagg)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/davidflagg86433)
 
 ## Quick Start
 
@@ -322,7 +322,7 @@ The memory engine is the foundation of everything. It's what lets an AI agent re
 
 I build this on $994/month disability income with an NVIDIA RTX 4070 and a VPS. If this project helps you, consider supporting it:
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/davidflagg)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/davidflagg86433)
 
 ## License
 
