@@ -25,7 +25,7 @@ def apply_temporal_decay(
         decay_rate: How much importance to subtract per day since last access.
         min_importance: Floor value — memories never decay below this.
     """
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     cutoff = now - datetime.timedelta(hours=24)
 
     # Decay memories with last_accessed before cutoff (skip protected)

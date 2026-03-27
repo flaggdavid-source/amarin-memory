@@ -109,7 +109,7 @@ async def semantic_search(
         {"qvec": _pack_vec(query_vec), "k": limit * 3},
     ).fetchall()
 
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     candidates = []
     for row in rows:
         row_id, distance, content, tags, created_at, importance, emotion_tags, mem_mid, is_active = row
@@ -375,17 +375,23 @@ async def retrieve_memories(
 # Core memory blocks
 # ---------------------------------------------------------------------------
 
-def get_core_blocks(db: Session) -> list[dict]:
-    """Get all core memory blocks."""
-    blocks = db.query(MemoryBlock).order_by(MemoryBlock.label).all()
+def get_core_blocks(db: Session, member_id: str | None = None) -> list[dict]:
+    """Get core memory blocks, optionally filtered by member_id."""
+    query = db.query(MemoryBlock)
+    if member_id is not None:
+        query = query.filter(MemoryBlock.member_id == member_id)
+    blocks = query.order_by(MemoryBlock.label).all()
     return [
-        {"label": b.label, "value": b.value, "updated_at": b.updated_at.isoformat()}
+        {"label": b.label, "value": b.value, "member_id": b.member_id, "updated_at": b.updated_at.isoformat()}
         for b in blocks
     ]
 
 
-def get_block(db: Session, label: str) -> MemoryBlock | None:
-    return db.query(MemoryBlock).filter(MemoryBlock.label == label).first()
+def get_block(db: Session, label: str, member_id: str | None = None) -> MemoryBlock | None:
+    query = db.query(MemoryBlock).filter(MemoryBlock.label == label)
+    if member_id is not None:
+        query = query.filter(MemoryBlock.member_id == member_id)
+    return query.first()
 
 
 def snapshot_block(db: Session, label: str, trigger: str = "api_update"):
@@ -409,14 +415,14 @@ def snapshot_block(db: Session, label: str, trigger: str = "api_update"):
             db.delete(s)
 
 
-def upsert_block(db: Session, label: str, value: str, trigger: str = "api_update") -> MemoryBlock:
-    block = get_block(db, label)
+def upsert_block(db: Session, label: str, value: str, trigger: str = "api_update", member_id: str | None = None) -> MemoryBlock:
+    block = get_block(db, label, member_id=member_id)
     if block:
         snapshot_block(db, label, trigger=trigger)
         block.value = value
-        block.updated_at = datetime.datetime.utcnow()
+        block.updated_at = datetime.datetime.now(datetime.timezone.utc)
     else:
-        block = MemoryBlock(label=label, value=value)
+        block = MemoryBlock(label=label, value=value, member_id=member_id)
         db.add(block)
     db.commit()
     db.refresh(block)
@@ -459,7 +465,7 @@ def restore_block(db: Session, label: str, snapshot_id: int) -> dict:
     block = get_block(db, label)
     if block:
         block.value = snapshot.value
-        block.updated_at = datetime.datetime.utcnow()
+        block.updated_at = datetime.datetime.now(datetime.timezone.utc)
         db.commit()
         return {"restored": True, "label": label, "restored_from": snapshot.snapshot_at.isoformat()}
     return {"restored": False, "error": f"Block '{label}' not found"}
@@ -640,7 +646,10 @@ def log_memory_edit(
 
 
 def revise_archival(db: Session, memory_id: int, new_content: str, reason: str | None = None) -> dict:
-    """Revise the content of an archival memory with audit trail."""
+    """Revise the content of an archival memory with audit trail.
+
+    Invalidates the stored embedding so it will be re-indexed on next sync.
+    """
     mem = get_archival_by_id(db, memory_id)
     if not mem:
         return {"revised": False, "error": f"Memory {memory_id} not found"}
@@ -650,6 +659,14 @@ def revise_archival(db: Session, memory_id: int, new_content: str, reason: str |
     original = mem.content
     log_memory_edit(db, memory_id, "revise", original_content=original, new_content=new_content, reason=reason)
     mem.content = new_content
+    # Invalidate embedding so semantic search doesn't match on old content.
+    # The embedding will be regenerated on next sync_vectors() call.
+    mem.embedding = None
+    # Remove from vec index — will be re-added on sync
+    try:
+        db.execute(text("DELETE FROM vec_archival WHERE rowid = :rid"), {"rid": memory_id})
+    except Exception:
+        pass  # vec row may not exist
     db.commit()
     return {"revised": True, "memory_id": memory_id, "original_preview": original[:100], "new_preview": new_content[:100]}
 
@@ -724,7 +741,7 @@ def search_archival_for_review(
         base = base.filter(ArchivalMemory.is_active != 0)
     results = base.order_by(ArchivalMemory.created_at.desc()).limit(limit).all()
 
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     return [
         {
             "id": r.id,
@@ -850,9 +867,12 @@ def build_archival_context(memories: list[dict]) -> str:
     )
 
 
-def build_memory_context(db: Session) -> str:
+def build_memory_context(db: Session, member_id: str | None = None) -> str:
     """Build the memory context string to prepend to conversations."""
-    blocks = db.query(MemoryBlock).order_by(MemoryBlock.label).all()
+    query = db.query(MemoryBlock)
+    if member_id is not None:
+        query = query.filter(MemoryBlock.member_id == member_id)
+    blocks = query.order_by(MemoryBlock.label).all()
     if not blocks:
         return ""
 

@@ -162,26 +162,26 @@ class MemoryEngine:
         finally:
             db.close()
 
-    def get_blocks(self) -> list[dict]:
-        """Get all core memory blocks."""
+    def get_blocks(self, member_id: str | None = None) -> list[dict]:
+        """Get core memory blocks, optionally filtered by member_id."""
         db = self.get_session()
         try:
-            return get_core_blocks(db)
+            return get_core_blocks(db, member_id=member_id)
         finally:
             db.close()
 
-    def set_block(self, label: str, value: str, trigger: str = "api_update"):
+    def set_block(self, label: str, value: str, trigger: str = "api_update", member_id: str | None = None):
         """Upsert a core memory block."""
         db = self.get_session()
         try:
-            return upsert_block(db, label, value, trigger)
+            return upsert_block(db, label, value, trigger, member_id=member_id)
         finally:
             db.close()
 
-    def build_context(self) -> str:
+    def build_context(self, member_id: str | None = None) -> str:
         """Build core memory context string for prompt injection."""
         db = self.get_session()
         try:
-            return build_memory_context(db)
+            return build_memory_context(db, member_id=member_id)
         finally:
             db.close()

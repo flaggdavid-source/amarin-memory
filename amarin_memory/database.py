@@ -24,9 +24,18 @@ def create_memory_engine(db_path: str, **kwargs):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.close()
-        dbapi_connection.enable_load_extension(True)
-        sqlite_vec.load(dbapi_connection)
-        dbapi_connection.enable_load_extension(False)
+        try:
+            dbapi_connection.enable_load_extension(True)
+            sqlite_vec.load(dbapi_connection)
+            dbapi_connection.enable_load_extension(False)
+        except AttributeError:
+            # macOS system Python disables enable_load_extension for security.
+            # Vector search won't work, but core blocks and keyword search still do.
+            import logging
+            logging.getLogger("amarin_memory.database").warning(
+                "sqlite3.enable_load_extension unavailable (macOS system Python?). "
+                "Vector search disabled. Use a non-system Python for full functionality."
+            )
 
     return engine
 

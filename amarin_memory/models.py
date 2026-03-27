@@ -12,10 +12,17 @@ class MemoryBlock(Base):
     __tablename__ = "memory_blocks"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    label: Mapped[str] = mapped_column(String(100), unique=True)
+    label: Mapped[str] = mapped_column(String(100))
     value: Mapped[str] = mapped_column(Text, default="")
+    member_id: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, default=None, index=True
+    )
     updated_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime, default=datetime.datetime.utcnow
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+    __table_args__ = (
+        Index("ix_block_label_member", "label", "member_id", unique=True),
     )
 
 
@@ -28,7 +35,7 @@ class ArchivalMemory(Base):
     tags: Mapped[str] = mapped_column(String(500), default="")
     embedding: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime, default=datetime.datetime.utcnow
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
     member_id: Mapped[str | None] = mapped_column(
         String(50), nullable=True, default=None, index=True
@@ -62,7 +69,7 @@ class CoreBlockSnapshot(Base):
     value: Mapped[str] = mapped_column(Text)
     trigger: Mapped[str] = mapped_column(String(30))
     snapshot_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime, default=datetime.datetime.utcnow
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
 
 
@@ -77,7 +84,7 @@ class MemoryEdit(Base):
     new_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     timestamp: Mapped[datetime.datetime] = mapped_column(
-        DateTime, default=datetime.datetime.utcnow
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
 
 
@@ -91,7 +98,7 @@ class SessionSummary(Base):
     key_topics: Mapped[str] = mapped_column(String(500), default="")
     emotional_arc: Mapped[str] = mapped_column(String(200), default="")
     created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime, default=datetime.datetime.utcnow
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
     period_type: Mapped[str] = mapped_column(String(20), default="session")
     period_start: Mapped[datetime.datetime | None] = mapped_column(
