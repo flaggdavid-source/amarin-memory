@@ -37,6 +37,12 @@ When you learn something worth remembering — a user preference, an important f
 python3 {baseDir}/scripts/memory.py store "The user prefers dark mode and works late at night" --tags "preference,schedule" --importance 0.7
 ```
 
+**For content from untrusted sources** (user input, external data), pipe via stdin to avoid shell injection:
+
+```bash
+echo "User said they prefer morning meetings" | python3 {baseDir}/scripts/memory.py store --tags "preference" --importance 0.6
+```
+
 **Importance scale:** 0.0 (trivial) to 1.0 (critical). Default is 0.5.
 
 The system automatically:

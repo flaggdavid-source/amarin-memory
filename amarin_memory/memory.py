@@ -362,13 +362,13 @@ async def retrieve_memories(
     if results is not None:
         if results:
             return results, "semantic"
-        keyword_results = search_archival_multi(db, keywords, limit=limit)
+        keyword_results = search_archival_multi(db, keywords, limit=limit, member_id=member_id)
         if keyword_results:
             return keyword_results, "keyword"
         return [], "semantic"
 
     logger.info("Falling back to keyword search (embedding service unavailable)")
-    return search_archival_multi(db, keywords, limit=limit), "keyword"
+    return search_archival_multi(db, keywords, limit=limit, member_id=member_id), "keyword"
 
 
 # ---------------------------------------------------------------------------
@@ -548,15 +548,20 @@ async def add_archival_with_embedding(
     return add_archival(db, content, tags, embedding, member_id, importance, emotion_tags)
 
 
-def search_archival(db: Session, query: str, limit: int = 10) -> list[dict]:
+def search_archival(db: Session, query: str, limit: int = 10, member_id: str | None = None) -> list[dict]:
     """Keyword search across archival memories."""
-    q = f"%{query}%"
+    # Escape SQL LIKE wildcards in user input to prevent enumeration
+    escaped = query.replace("%", "\\%").replace("_", "\\_")
+    q = f"%{escaped}%"
+    filters = [
+        ArchivalMemory.is_active != 0,
+        (ArchivalMemory.content.ilike(q)) | (ArchivalMemory.tags.ilike(q)),
+    ]
+    if member_id is not None:
+        filters.append(ArchivalMemory.member_id == member_id)
     results = (
         db.query(ArchivalMemory)
-        .filter(
-            ArchivalMemory.is_active != 0,
-            (ArchivalMemory.content.ilike(q)) | (ArchivalMemory.tags.ilike(q)),
-        )
+        .filter(*filters)
         .order_by(ArchivalMemory.created_at.desc())
         .limit(limit)
         .all()
@@ -591,14 +596,14 @@ def list_archival(db: Session, limit: int = 50) -> list[dict]:
     ]
 
 
-def search_archival_multi(db: Session, keywords: list[str], limit: int = 5) -> list[dict]:
+def search_archival_multi(db: Session, keywords: list[str], limit: int = 5, member_id: str | None = None) -> list[dict]:
     """Search archival memories using multiple keywords, return unique results."""
     seen_ids: set[int] = set()
     results: list[dict] = []
     for kw in keywords:
         if not kw.strip():
             continue
-        for r in search_archival(db, kw.strip(), limit=limit):
+        for r in search_archival(db, kw.strip(), limit=limit, member_id=member_id):
             if r["id"] not in seen_ids:
                 seen_ids.add(r["id"])
                 results.append(r)
@@ -853,7 +858,11 @@ def build_memory_context(db: Session) -> str:
 
     sections = []
     for block in blocks:
-        sections.append(f"<{block.label}>\n{block.value}\n</{block.label}>")
+        # Sanitize label to prevent tag injection (alphanumeric + underscore only)
+        safe_label = "".join(c for c in block.label if c.isalnum() or c == "_") or "block"
+        # Escape value to prevent closing-tag injection
+        safe_value = block.value.replace(f"</{safe_label}>", f"&lt;/{safe_label}&gt;")
+        sections.append(f"<{safe_label}>\n{safe_value}\n</{safe_label}>")
 
     return (
         "### Core Memories\n"

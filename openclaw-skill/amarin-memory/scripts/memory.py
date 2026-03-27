@@ -28,9 +28,16 @@ def get_engine():
 
 def cmd_store(args):
     engine = get_engine()
+    content = args.content
+    if content is None:
+        content = sys.stdin.read().strip()
+    if not content:
+        print("ERROR: No content provided. Pass as argument or via stdin.")
+        sys.exit(1)
     result = asyncio.run(engine.store(
-        content=args.content,
+        content=content,
         tags=args.tags or "",
+        member_id=args.member or None,
         importance=args.importance,
         emotion_tags=args.emotion or None,
     ))
@@ -152,11 +159,11 @@ def main():
 
     # store
     p = sub.add_parser("store", help="Store a new memory")
-    p.add_argument("content", help="Memory content")
+    p.add_argument("content", nargs="?", default=None, help="Memory content (or pass via stdin with --stdin)")
     p.add_argument("--tags", default="", help="Comma-separated tags")
     p.add_argument("--importance", type=float, default=0.5, help="0.0-1.0")
     p.add_argument("--emotion", default=None, help="Emotion tags")
-    p.add_argument("--member", default=None, help="Member ID for multi-agent")
+    p.add_argument("--member", default=None, help="Member ID for multi-agent isolation")
 
     # search
     p = sub.add_parser("search", help="Semantic search")

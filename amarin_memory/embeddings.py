@@ -2,6 +2,7 @@
 
 import logging
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -9,6 +10,16 @@ logger = logging.getLogger("amarin_memory.embeddings")
 
 DEFAULT_EMBEDDING_URL = "http://localhost:8200"
 DEFAULT_TIMEOUT = 15.0
+
+
+def _validate_url(url: str) -> str:
+    """Validate embedding service URL to prevent SSRF."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Embedding URL must use http or https, got: {parsed.scheme}")
+    if not parsed.hostname:
+        raise ValueError(f"Invalid embedding URL: {url}")
+    return url
 
 
 async def get_embeddings(
@@ -21,6 +32,7 @@ async def get_embeddings(
     Returns None if the service is unavailable (caller should fall back).
     """
     try:
+        _validate_url(base_url)
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(
                 f"{base_url}/embed",
@@ -43,6 +55,7 @@ async def get_query_embedding(
     Returns None if the service is unavailable.
     """
     try:
+        _validate_url(base_url)
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(
                 f"{base_url}/query-embed",
