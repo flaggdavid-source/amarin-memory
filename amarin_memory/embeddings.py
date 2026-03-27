@@ -39,7 +39,16 @@ async def get_embeddings(
                 json={"texts": texts},
             )
             resp.raise_for_status()
-            return resp.json()["embeddings"]
+            embeddings = resp.json()["embeddings"]
+            # Validate response shape to prevent poisoned embeddings
+            if not isinstance(embeddings, list):
+                logger.warning("Embedding response is not a list")
+                return None
+            for emb in embeddings:
+                if not isinstance(emb, list) or not all(isinstance(v, (int, float)) for v in emb):
+                    logger.warning("Embedding response contains non-numeric values")
+                    return None
+            return embeddings
     except Exception as e:
         logger.warning("Embedding service unavailable: %s", e)
         return None
@@ -62,7 +71,12 @@ async def get_query_embedding(
                 json={"query": query},
             )
             resp.raise_for_status()
-            return resp.json()["embedding"]
+            embedding = resp.json()["embedding"]
+            # Validate response shape
+            if not isinstance(embedding, list) or not all(isinstance(v, (int, float)) for v in embedding):
+                logger.warning("Query embedding response has invalid shape")
+                return None
+            return embedding
     except Exception as e:
         logger.warning("Embedding service unavailable: %s", e)
         return None

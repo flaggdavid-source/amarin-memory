@@ -307,15 +307,17 @@ async def deduplicate_and_save(
             return {"action": "skipped", "memory_id": existing_id, "similarity": best_sim}
 
     # --- Surprise-based importance (Titans-inspired) ---
+    # Use surprise scoring as a floor, but respect caller's importance if higher
     if best_sim >= 0.30:
         surprise = (0.85 - best_sim) / 0.55
-        importance = 0.5 + 0.2 * surprise
+        surprise_importance = 0.5 + 0.2 * surprise
     elif similar:
         surprise = 1.0
-        importance = 0.5
+        surprise_importance = 0.5
     else:
         surprise = 0.5
-        importance = 0.5
+        surprise_importance = 0.5
+    importance = max(importance, surprise_importance)
 
     mem = add_archival(db, content, tags, new_embedding, member_id,
                        importance, emotion_tags, surprise=round(surprise, 4))
@@ -620,9 +622,12 @@ def search_archival_multi(db: Session, keywords: list[str], limit: int = 5, memb
 # Memory curation
 # ---------------------------------------------------------------------------
 
-def get_archival_by_id(db: Session, memory_id: int) -> ArchivalMemory | None:
-    """Fetch a single archival memory by ID."""
-    return db.query(ArchivalMemory).filter(ArchivalMemory.id == memory_id).first()
+def get_archival_by_id(db: Session, memory_id: int, member_id: str | None = None) -> ArchivalMemory | None:
+    """Fetch a single archival memory by ID, optionally verifying tenant ownership."""
+    query = db.query(ArchivalMemory).filter(ArchivalMemory.id == memory_id)
+    if member_id is not None:
+        query = query.filter(ArchivalMemory.member_id == member_id)
+    return query.first()
 
 
 def log_memory_edit(
@@ -645,12 +650,13 @@ def log_memory_edit(
     db.commit()
 
 
-def revise_archival(db: Session, memory_id: int, new_content: str, reason: str | None = None) -> dict:
+def revise_archival(db: Session, memory_id: int, new_content: str, reason: str | None = None, member_id: str | None = None) -> dict:
     """Revise the content of an archival memory with audit trail.
 
     Invalidates the stored embedding so it will be re-indexed on next sync.
+    If member_id is provided, verifies the memory belongs to that tenant.
     """
-    mem = get_archival_by_id(db, memory_id)
+    mem = get_archival_by_id(db, memory_id, member_id=member_id)
     if not mem:
         return {"revised": False, "error": f"Memory {memory_id} not found"}
     if mem.is_active == 0:
@@ -671,9 +677,9 @@ def revise_archival(db: Session, memory_id: int, new_content: str, reason: str |
     return {"revised": True, "memory_id": memory_id, "original_preview": original[:100], "new_preview": new_content[:100]}
 
 
-def deactivate_archival(db: Session, memory_id: int, reason: str | None = None) -> dict:
+def deactivate_archival(db: Session, memory_id: int, reason: str | None = None, member_id: str | None = None) -> dict:
     """Soft-delete an archival memory (set is_active=0)."""
-    mem = get_archival_by_id(db, memory_id)
+    mem = get_archival_by_id(db, memory_id, member_id=member_id)
     if not mem:
         return {"forgotten": False, "error": f"Memory {memory_id} not found"}
     if mem.is_active == 0:
@@ -685,9 +691,9 @@ def deactivate_archival(db: Session, memory_id: int, reason: str | None = None) 
     return {"forgotten": True, "memory_id": memory_id, "content_preview": mem.content[:100]}
 
 
-def activate_archival(db: Session, memory_id: int) -> dict:
+def activate_archival(db: Session, memory_id: int, member_id: str | None = None) -> dict:
     """Restore a soft-deleted archival memory."""
-    mem = get_archival_by_id(db, memory_id)
+    mem = get_archival_by_id(db, memory_id, member_id=member_id)
     if not mem:
         return {"restored": False, "error": f"Memory {memory_id} not found"}
     if mem.is_active != 0:
@@ -699,9 +705,9 @@ def activate_archival(db: Session, memory_id: int) -> dict:
     return {"restored": True, "memory_id": memory_id, "content_preview": mem.content[:100]}
 
 
-def protect_archival(db: Session, memory_id: int) -> dict:
+def protect_archival(db: Session, memory_id: int, member_id: str | None = None) -> dict:
     """Shield a memory from temporal decay. Boosts importance to 0.7 floor."""
-    mem = get_archival_by_id(db, memory_id)
+    mem = get_archival_by_id(db, memory_id, member_id=member_id)
     if not mem:
         return {"protected": False, "error": f"Memory {memory_id} not found"}
     if mem.protected == 1:
@@ -715,9 +721,9 @@ def protect_archival(db: Session, memory_id: int) -> dict:
     return {"protected": True, "memory_id": memory_id, "importance": mem.importance, "content_preview": mem.content[:100]}
 
 
-def release_archival(db: Session, memory_id: int) -> dict:
+def release_archival(db: Session, memory_id: int, member_id: str | None = None) -> dict:
     """Remove decay protection from a memory."""
-    mem = get_archival_by_id(db, memory_id)
+    mem = get_archival_by_id(db, memory_id, member_id=member_id)
     if not mem:
         return {"released": False, "error": f"Memory {memory_id} not found"}
     if mem.protected != 1:
