@@ -96,6 +96,11 @@ async def semantic_search(
     if query_vec is None:
         return None
 
+    # Over-fetch to compensate for post-filtering by member_id and is_active.
+    # sqlite-vec does not support WHERE clauses in KNN queries, so we fetch more
+    # rows and filter afterward. Multiplier of 5 reduces missed results in
+    # multi-tenant databases at the cost of scanning slightly more rows.
+    over_fetch = limit * 5
     conn = db.connection()
     rows = conn.execute(
         text(
@@ -106,16 +111,19 @@ async def semantic_search(
             "WHERE v.embedding MATCH :qvec AND k = :k "
             "ORDER BY v.distance"
         ),
-        {"qvec": _pack_vec(query_vec), "k": limit * 3},
+        {"qvec": _pack_vec(query_vec), "k": over_fetch},
     ).fetchall()
 
     now = datetime.datetime.now(datetime.timezone.utc)
+    filtered_count = 0
     candidates = []
     for row in rows:
         row_id, distance, content, tags, created_at, importance, emotion_tags, mem_mid, is_active = row
         if is_active is not None and is_active == 0:
+            filtered_count += 1
             continue
         if member_id is not None and mem_mid != member_id:
+            filtered_count += 1
             continue
         similarity = max(0.0, 1.0 - distance / 2.0)
         if similarity <= 0.3:
@@ -133,6 +141,14 @@ async def semantic_search(
             "emotion_tags": emotion_tags,
             "member_id": mem_mid,
         })
+
+    if filtered_count > over_fetch * 0.5:
+        logger.warning(
+            "Semantic search: %d/%d KNN rows filtered out (member_id=%s). "
+            "Results may be incomplete — consider increasing over_fetch or "
+            "partitioning the database.",
+            filtered_count, len(rows), member_id,
+        )
 
     candidates.sort(key=lambda x: x["score"], reverse=True)
     results = candidates[:limit]
@@ -166,7 +182,7 @@ def find_similar_memories(
     Used for deduplication checks before saving new memories.
     """
     conn = db.connection()
-    over_fetch = limit * 3
+    over_fetch = limit * 5
 
     rows = conn.execute(
         text(
@@ -475,10 +491,12 @@ def restore_block(db: Session, label: str, snapshot_id: int) -> dict:
 
 def get_member_core_memory(db: Session, member_id: str) -> str:
     """Get all core memory blocks for a specific member, formatted for injection."""
-    prefix = f"{member_id}:"
+    # Escape SQL LIKE wildcards in member_id to prevent cross-tenant enumeration
+    escaped_id = member_id.replace("%", "\\%").replace("_", "\\_")
+    prefix = f"{escaped_id}:"
     blocks = (
         db.query(MemoryBlock)
-        .filter(MemoryBlock.label.startswith(prefix))
+        .filter(MemoryBlock.label.like(f"{prefix}%", escape="\\"))
         .order_by(MemoryBlock.label)
         .all()
     )
@@ -739,7 +757,8 @@ def search_archival_for_review(
     db: Session, query: str, limit: int = 10, show_forgotten: bool = False
 ) -> list[dict]:
     """Search archival memories with full metadata for curation review."""
-    q = f"%{query}%"
+    escaped = query.replace("%", "\\%").replace("_", "\\_")
+    q = f"%{escaped}%"
     base = db.query(ArchivalMemory).filter(
         (ArchivalMemory.content.ilike(q)) | (ArchivalMemory.tags.ilike(q))
     )

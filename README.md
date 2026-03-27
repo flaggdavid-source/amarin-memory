@@ -255,7 +255,7 @@ from amarin_memory.memory import (
 )
 ```
 
-Each function takes a SQLAlchemy session as its first argument, giving you full transaction control.
+Each function takes a SQLAlchemy session as its first argument. Note that most helpers commit internally for safety — if you need atomic multi-step operations, wrap them in your own transaction and call `db.commit()` at the end.
 
 ## Configuration
 

@@ -140,7 +140,7 @@ class TestArchivalMemory:
 class TestDecay:
     def test_decay_skips_recent(self, db):
         mem = add_archival(db, "Recent memory", importance=0.8)
-        mem.last_accessed = datetime.datetime.utcnow()
+        mem.last_accessed = datetime.datetime.now(datetime.timezone.utc)
         db.commit()
         apply_temporal_decay(db)
         db.refresh(mem)
@@ -148,7 +148,7 @@ class TestDecay:
 
     def test_decay_reduces_old(self, db):
         mem = add_archival(db, "Old memory", importance=0.8)
-        mem.last_accessed = datetime.datetime.utcnow() - datetime.timedelta(days=10)
+        mem.last_accessed = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=10)
         db.commit()
         apply_temporal_decay(db, decay_rate=0.05)
         db.refresh(mem)
@@ -156,7 +156,7 @@ class TestDecay:
 
     def test_decay_skips_protected(self, db):
         mem = add_archival(db, "Protected old memory", importance=0.8)
-        mem.last_accessed = datetime.datetime.utcnow() - datetime.timedelta(days=10)
+        mem.last_accessed = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=10)
         mem.protected = 1
         db.commit()
         apply_temporal_decay(db, decay_rate=0.05)

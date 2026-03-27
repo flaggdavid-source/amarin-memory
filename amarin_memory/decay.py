@@ -42,7 +42,11 @@ def apply_temporal_decay(
 
     count = 0
     for mem in memories:
-        days_since = (now - mem.last_accessed).total_seconds() / 86400.0
+        # SQLite stores naive datetimes — assume UTC if no tzinfo
+        last = mem.last_accessed
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=datetime.timezone.utc)
+        days_since = (now - last).total_seconds() / 86400.0
         decay = decay_rate * days_since
         new_importance = max(min_importance, mem.importance - decay)
         if new_importance < mem.importance:
@@ -67,7 +71,10 @@ def apply_temporal_decay(
     count2 = 0
     for mem in unaccessed:
         if mem.created_at:
-            days_since = (now - mem.created_at).total_seconds() / 86400.0
+            created = mem.created_at
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=datetime.timezone.utc)
+            days_since = (now - created).total_seconds() / 86400.0
             decay = decay_rate * 0.5 * days_since
             new_importance = max(min_importance, (mem.importance or 0.5) - decay)
             if new_importance < (mem.importance or 0.5):
